@@ -1,0 +1,7 @@
+2-bash/Auto-Openconnect/.logs
+.idea
+*.iml
+1-python/1-python2/*.pyc
+2-bash/Auto-Openconnect/.*
+out/
+

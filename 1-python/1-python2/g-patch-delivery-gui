@@ -1,0 +1,747 @@
+#!/usr/bin/python
+
+import sys
+import os
+import re
+import urllib2
+import pygtk
+import tempfile
+pygtk.require('2.0')
+import gtk
+
+__returnValue = 1
+
+def getReturnValue():
+    global __returnValue
+    return __returnValue
+
+def setReturnValue(val):
+    global __returnValue
+    __returnValue = val
+
+class PatchDeliveryData():
+    def __init__(self):
+        self.returnValue = 1
+        self.commitMessage = ''
+        self.projList = []
+        self.comment = ''
+        self.bugNumber = ''
+        self.productName = ''
+        self.rootCauseList = ['Unknown_Today', 'Architecture', 'Specification', 'Design', 'Coding', 'Regression', 'Evolution']
+        self.rootCause = ''
+        self.moduleImpact = ''
+        self.testSuggestion = ''
+        self.solution = ''
+        self.testReport = ''
+        self.bugCategoryList = ['Platform', 'Android', '3rd Party', 'TCT', 'T2M']
+        self.bugCategory = ''
+        self.generatedByList = ['UE Improvement', 'SW Code', 'Perso Tool Chain', 'Translation', 'Customization', 'HW Related Implementation', 'New Requirement', 'Parameters']
+        self.generatedBy = ''
+        self.valCanTest = ''
+        self.lastCommitLogFile = os.path.expanduser('~/.last_commit_patch-delivery-gui')
+
+class JrdPatchDeliveryClientGui(gtk.Window):
+    def __init__(self, parent=None, patchDeliveryData=None):
+        gtk.Window.__init__(self)
+        try:
+            self.set_screen(parent.get_screen())
+        except AttributeError:
+            self.connect('destroy', lambda *w: gtk.main_quit())
+
+        self.patchDeliveryData = patchDeliveryData
+        self.job = 'Defect Job'
+
+        self.set_title('Patch Delivery')
+        self.set_border_width(0)
+        # self.set_position(gtk.WIN_POS_CENTER)
+        self.set_size_request(550, 700)
+        self.set_resizable(False)
+
+        entries = (
+            #name, stock id, label, accelerator, tooltip
+            ( "FileMenu", None, "File" ),
+            ( "OK", None, "OK", None, "OK", self.doOKMenu),
+            ( "Reset", None, "Reset", None, "Reset each item", self.doResetMenu),
+            ( "LoadLast", None, "Load Last", None, "Load information of last commit", self.doLoadLastMenu),
+            ( "Cancel", None, "Cancel", None, "Cancel", self.doCancelMenu),
+            ( "HelpMenu", None, "Help" ),
+            ( "About", None, "About", None, "About", self.doAboutMenu),
+        )
+
+        ui_info = \
+        '''<ui>
+          <menubar name='MenuBar'>
+            <menu action='FileMenu'>
+              <menuitem action='OK'/>
+              <menuitem action='Reset'/>
+              <menuitem action='LoadLast'/>
+              <menuitem action='Cancel'/>
+            </menu>
+            <menu action='HelpMenu'>
+              <menuitem action='About'/>
+            </menu>
+          </menubar>
+        </ui>'''
+
+        actions = gtk.ActionGroup("Actions")
+        actions.add_actions(entries)
+
+        ui = gtk.UIManager()
+        ui.insert_action_group(actions, 0)
+        self.add_accel_group(ui.get_accel_group())
+        ui.add_ui_from_string(ui_info)
+
+        vbox1 = gtk.VBox(False, 0)
+        vbox1.set_border_width(0)
+        self.add(vbox1)
+
+        vbox1.pack_start(ui.get_widget("/MenuBar"), False, False, 0)
+
+        if not os.path.isfile(self.patchDeliveryData.lastCommitLogFile):
+            ui.get_widget("/MenuBar/FileMenu/LoadLast").set_sensitive(False)
+
+        vbox2 = gtk.VBox(False, 6)
+        vbox2.set_border_width(6)
+        vbox1.pack_start(vbox2)
+
+        hbox0 =gtk.HBox(False, 0)
+        topic_frame = gtk.Frame("TOPIC")
+        topic_frame.add(hbox0)
+        vbox2.pack_start(topic_frame, False, False, 5)
+
+        labelJob = gtk.Label()
+        labelJob.set_markup('<b>Work Job          </b>')
+        hbox0.pack_start(labelJob, False, False, 0)
+        DefectRaidoBtn = gtk.RadioButton(None, "Defect Job")
+        DefectRaidoBtn.connect("toggled", self.chooseJob)
+        DefectRaidoBtn.set_active(True)
+        hbox0.pack_start(DefectRaidoBtn, True, True, 0)
+        TaskRaidoBtn = gtk.RadioButton(DefectRaidoBtn, "Task Job")
+        TaskRaidoBtn.connect("toggled", self.chooseJob)
+        hbox0.pack_start(TaskRaidoBtn, True, True, 0)
+
+        hbox1 = gtk.HBox(False, 0)
+        product_frame = gtk.Frame("PRODUCT")
+        product_frame.add(hbox1)
+        vbox2.pack_start(product_frame, False, False, 0)
+
+        labelProduct = gtk.Label()
+        labelProduct.set_markup('<b>Product  </b>')
+        hbox1.pack_start(labelProduct, False, False, 0)
+        self.entryProduct = gtk.Entry()
+        self.entryProduct.set_text(self.patchDeliveryData.productName)
+        # hbox1.pack_start(self.entryProduct, expand=False, padding=5)
+        hbox1.pack_start(self.entryProduct, False, False, 0)
+        self.entryProduct.set_width_chars(30)
+        completion = gtk.EntryCompletion()
+        self.entryProduct.set_completion(completion)
+        store = gtk.ListStore(str)
+        for one in self.patchDeliveryData.projList:
+            iter = store.append()
+            store.set(iter, 0, one)
+        completion.set_model(store)
+        completion.set_text_column(0)
+
+        self.entryBug = gtk.Entry()
+        self.entryBug.set_width_chars(10)
+        self.entryBug.set_text(self.patchDeliveryData.bugNumber)
+        hbox1.pack_end(self.entryBug, False, False, 0)
+        self.labelBumNumber = gtk.Label()
+        self.labelBumNumber.set_markup('<b>Defect Number </b>')
+        hbox1.pack_end(self.labelBumNumber, False, False, 0)
+
+        hbox2 = gtk.HBox(False, 0)
+        rootcause_frame = gtk.Frame("ROOTCAUSE")
+        rootcause_frame.add(hbox2)
+        vbox2.pack_start(rootcause_frame, False, False, 0)
+
+        self.labelRootCause = gtk.Label()
+        self.labelRootCause.set_markup('<b>Root Cause   </b>')
+        hbox2.pack_start(self.labelRootCause, False, False, 0)
+        self.comboBoxRootCause = gtk.combo_box_new_text()
+        # self.comboBoxRootCause.set_wrap_width(1)
+        for one in self.patchDeliveryData.rootCauseList:
+            self.comboBoxRootCause.append_text(one)
+        rootCauseIndex = -1
+        if self.patchDeliveryData.rootCause:
+            if self.patchDeliveryData.rootCause in self.patchDeliveryData.rootCauseList:
+                rootCauseIndex = self.patchDeliveryData.rootCauseList.index(self.patchDeliveryData.rootCause)
+        self.comboBoxRootCause.set_active(rootCauseIndex)
+        # hbox2.pack_start(self.comboBoxRootCause, expand=False, padding=5)
+        hbox2.pack_start(self.comboBoxRootCause, False, False, 0)
+
+        self.entryModule = gtk.Entry()
+        self.entryModule.set_width_chars(10)
+        self.entryModule.set_text(self.patchDeliveryData.moduleImpact)
+        hbox2.pack_end(self.entryModule, False, False, 0)
+        labelModule =gtk.Label()
+        labelModule.set_markup('<b>Module Impact </b>')
+        hbox2.pack_end(labelModule, False, False, 0)
+
+        # vbox2.pack_start(gtk.HSeparator(), False, False, 0)
+
+        labelSolution = gtk.Label()
+        labelSolution.set_markup('<b>Solution</b>')
+        labelSolution.set_alignment(0, 0)
+        vbox2.pack_start(labelSolution, False, False, 0)
+        self.entrySolution = gtk.Entry()
+        self.entrySolution.set_text(self.patchDeliveryData.solution)
+        vbox2.pack_start(self.entrySolution, False, False, 0)
+
+        labelTestSuggestion = gtk.Label()
+        labelTestSuggestion.set_markup('<b>Test Suggestion</b>\n<small><i>The suggestion to VAL that how to test the patch and find possible side effect</i></small>')
+        labelTestSuggestion.set_alignment(0, 0)
+        vbox2.pack_start(labelTestSuggestion, False, False, 0)
+        self.textViewTestSuggestion = gtk.TextView()
+        self.textViewTestSuggestion.set_wrap_mode(gtk.WRAP_WORD)
+        self.textViewTestSuggestion.set_size_request(-1, 84)
+        bufferSuggestion = self.textViewTestSuggestion.get_buffer()
+        iter = bufferSuggestion.get_iter_at_offset(0)
+        bufferSuggestion.insert(iter, self.patchDeliveryData.testSuggestion)
+        swTestSuggestion = gtk.ScrolledWindow()
+        swTestSuggestion.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        swTestSuggestion.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        swTestSuggestion.add(self.textViewTestSuggestion)
+        vbox2.add(swTestSuggestion)
+
+        labelTestReport = gtk.Label()
+        labelTestReport.set_markup('<b>Test Report</b>\n<small><i>What\'s test has been done and the result before submit the patch?</i></small>')
+        labelTestReport.set_alignment(0, 0)
+        vbox2.pack_start(labelTestReport, False, False, 0)
+        self.textViewTestReport = gtk.TextView()
+        self.textViewTestReport.set_wrap_mode(gtk.WRAP_WORD)
+        self.textViewTestReport.set_size_request(-1, 84)
+        bufferReport = self.textViewTestReport.get_buffer()
+        iter = bufferReport.get_iter_at_offset(0)
+        bufferReport.insert(iter, self.patchDeliveryData.testReport)
+        swTestReport = gtk.ScrolledWindow()
+        swTestReport.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        swTestReport.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        swTestReport.add(self.textViewTestReport)
+        vbox2.add(swTestReport)
+
+        self.hbox3 = gtk.HBox(False, 0)
+        vbox2.pack_start(self.hbox3, False, False, 0)
+
+        subVbox1 = gtk.VBox(False, 0)
+        self.hbox3.pack_start(subVbox1, False, False, 0)
+
+        labelBugCategory = gtk.Label()
+        labelBugCategory.set_markup('<b>Bug category</b>')
+        labelBugCategory.set_alignment(0, 0)
+        subVbox1.pack_start(labelBugCategory, False, False, 0)
+        self.comboBoxBugCategory = gtk.combo_box_new_text()
+        self.comboBoxBugCategory.set_wrap_width(1)
+        for one in self.patchDeliveryData.bugCategoryList:
+            self.comboBoxBugCategory.append_text(one)
+        bugCategoryIndex = -1
+        if self.patchDeliveryData.bugCategory:
+            if self.patchDeliveryData.bugCategory in self.patchDeliveryData.bugCategoryList:
+                bugCategoryIndex = self.patchDeliveryData.bugCategoryList.index(self.patchDeliveryData.bugCategory)
+        self.comboBoxBugCategory.set_active(bugCategoryIndex)
+        subVbox1.pack_start(self.comboBoxBugCategory, expand=False, padding=5)
+
+        subVbox2 = gtk.VBox(False, 0)
+        self.hbox3.pack_start(subVbox2, False, False, 10)
+
+        self.labelGeneratedBy = gtk.Label()
+        self.labelGeneratedBy.set_markup('<b>Root cause category</b>')
+        self.labelGeneratedBy.set_alignment(0, 0)
+        subVbox2.pack_start(self.labelGeneratedBy, False, False, 0)
+        self.comboBoxGeneratedBy = gtk.combo_box_new_text()
+        self.comboBoxGeneratedBy.set_wrap_width(1)
+        for one in self.patchDeliveryData.generatedByList:
+            self.comboBoxGeneratedBy.append_text(one)
+        generatedByIndex = -1
+        if self.patchDeliveryData.generatedBy:
+            if self.patchDeliveryData.generatedBy in self.patchDeliveryData.generatedByList:
+                generatedByIndex = self.patchDeliveryData.generatedByList.index(self.patchDeliveryData.generatedBy)
+        self.comboBoxGeneratedBy.set_active(generatedByIndex)
+        if self.patchDeliveryData.bugCategory == 'TCT':
+            self.labelGeneratedBy.set_sensitive(True)
+            self.comboBoxGeneratedBy.set_sensitive(True) 
+        else:
+            self.labelGeneratedBy.set_sensitive(False)
+            self.comboBoxGeneratedBy.set_sensitive(False)
+        subVbox2.pack_start(self.comboBoxGeneratedBy, expand=False, padding=5)
+
+        self.comboBoxBugCategory.connect("changed", self.cbComboBoxBugCategoryChanged, self.labelGeneratedBy, self.comboBoxGeneratedBy)
+
+        subVbox3 = gtk.VBox(False, 0)
+        self.hbox3.pack_end(subVbox3, False, False, 0)
+
+        labelValCanTest = gtk.Label()
+        labelValCanTest.set_markup('<b>VAL Can Test</b>')
+        labelValCanTest.set_alignment(0, 0)
+        subVbox3.pack_start(labelValCanTest, False, False, 0)
+        self.comboBoxValCanCheck = gtk.combo_box_new_text()
+        self.comboBoxValCanCheck.set_wrap_width(1)
+        self.comboBoxValCanCheck.append_text('Yes')
+        self.comboBoxValCanCheck.append_text('No')
+        if self.patchDeliveryData.valCanTest == 'Yes':
+            self.comboBoxValCanCheck.set_active(0)
+        elif self.patchDeliveryData.valCanTest == 'No':
+            self.comboBoxValCanCheck.set_active(1)
+        else:
+            self.comboBoxValCanCheck.set_active(-1)
+        subVbox3.pack_start(self.comboBoxValCanCheck, expand=False, padding=5)
+
+        # vbox2.pack_start(gtk.HSeparator(), False, False, 0)
+
+        labelComment = gtk.Label()
+        labelComment.set_markup('<b>Comment</b>')
+        labelComment.set_alignment(0, 0)
+        vbox2.pack_start(labelComment, False, False, 0)
+        self.textViewComment = gtk.TextView()
+        self.textViewComment.set_wrap_mode(gtk.WRAP_WORD)
+        self.textViewComment.set_size_request(-1, 84)
+        bufferComment = self.textViewComment.get_buffer()
+        iter = bufferComment.get_iter_at_offset(0)
+        bufferComment.insert(iter, self.patchDeliveryData.comment)
+        swComment = gtk.ScrolledWindow()
+        swComment.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        swComment.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        swComment.add(self.textViewComment)
+        vbox2.add(swComment)
+
+        # vbox2.pack_start(gtk.HSeparator(), False, False, 0)
+
+        bbox = gtk.HButtonBox()
+        bbox.set_border_width(5)
+        bbox.set_layout(gtk.BUTTONBOX_SPREAD)
+        # bbox.set_spacing(40)
+        vbox2.pack_start(bbox, False, False, 0)
+        buttonCommit = gtk.Button('OK')
+        buttonCommit.connect("clicked", self.cbOkButton)
+        bbox.add(buttonCommit)
+        buttonCancel = gtk.Button('Cancel')
+        buttonCancel.connect("clicked", self.cbCancelButton)
+        bbox.add(buttonCancel)
+
+        self.show_all()
+
+    def errInputItemDlg(self, message, obj):
+        dialog = gtk.MessageDialog(self,
+                gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                gtk.MESSAGE_INFO, gtk.BUTTONS_OK,
+                message)
+        dialog.run()
+        dialog.destroy()
+        obj.grab_focus()
+
+    def checkAndGenCommitMsg(self):
+        productString = self.entryProduct.get_text()
+        bugString = self.entryBug.get_text()
+        rootCauseString = self.comboBoxRootCause.get_active_text()
+        moduleString = self.entryModule.get_text()
+        solutionString = self.entrySolution.get_text()
+        bufferSuggestion = self.textViewTestSuggestion.get_buffer()
+        testSuggestionString = bufferSuggestion.get_text(bufferSuggestion.get_start_iter(), bufferSuggestion.get_end_iter())
+        bufferReport = self.textViewTestReport.get_buffer()
+        testReportString = bufferReport.get_text(bufferReport.get_start_iter(), bufferReport.get_end_iter())
+        bufferComment = self.textViewComment.get_buffer()
+        bugCategoryString = self.comboBoxBugCategory.get_active_text()
+        generatedBySteing = self.comboBoxGeneratedBy.get_active_text()
+        valCanCheckString = self.comboBoxValCanCheck.get_active_text()
+        commentString = bufferComment.get_text(bufferComment.get_start_iter(), bufferComment.get_end_iter())
+
+        if not productString:
+            self.errInputItemDlg('Please input Product', self.entryProduct)
+            return
+        if productString not in self.patchDeliveryData.projList:
+            self.errInputItemDlg('Product "%s" doesn\'t exist'%productString, self.entryProduct)
+            return
+        if not bugString:
+            self.errInputItemDlg('Please input Bug Number', self.entryBug)
+            return
+        for one in re.split('\s*,\s*', bugString):
+            if not re.match('\d+$', one):
+                self.errInputItemDlg("Bug Number error: must be number(s), use ',' to seperate", self.entryBug)
+                return
+
+        errno = legal_ID(productString, bugString, self.job)
+        if errno[1] != 200:
+            self.errInputItemDlg(errno[0], self.comboBoxRootCause)
+            return
+        if not rootCauseString and self.job != 'Task Job':
+            self.errInputItemDlg('Please select Root cause', self.comboBoxRootCause)
+            return
+        if not moduleString:
+            self.errInputItemDlg('Please input Module Impact', self.entryModule)
+            return
+        if not solutionString:
+            self.errInputItemDlg('Please input Solution', self.entrySolution)
+            return
+        if not testSuggestionString:
+            self.errInputItemDlg('Please input Test Suggestion', self.textViewTestSuggestion)
+            return
+        if not testReportString:
+            self.errInputItemDlg('Please input Test Report', self.textViewTestReport)
+            return
+        if not bugCategoryString and self.job != 'Task Job':
+            self.errInputItemDlg('Please select Bug Category', self.comboBoxBugCategory)
+            return
+        if bugCategoryString == 'TCT' and (not generatedBySteing):
+            self.errInputItemDlg('Please select Bug Category', self.comboBoxBugCategory)
+            return
+        if bugCategoryString == 'JRD bug' and (not generatedBySteing):
+            self.errInputItemDlg('Please select Generated By', self.comboBoxGeneratedBy)
+            return
+        if not valCanCheckString and self.job != 'Task Job':
+            self.errInputItemDlg('Please select VAL Can Test', self.comboBoxValCanCheck)
+            return
+        if not commentString:
+            self.errInputItemDlg('Please input Comment', self.textViewComment)
+            return
+        self.patchDeliveryData.commitMessage = '###%%%%%%comment:%s\n' % commentString.strip() if commentString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%bug number:%s\n' % bugString.strip() if bugString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%product name:%s\n' % productString.strip() if productString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%root cause:%s\n' % rootCauseString.strip() if rootCauseString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%Bug category:%s\n' % bugCategoryString.strip() if bugCategoryString else ""
+        if bugCategoryString == 'TCT':
+            self.patchDeliveryData.commitMessage += '###%%%%%%Generated by:%s\n' % generatedBySteing.strip() if generatedBySteing else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%Module_Impact:%s\n' % moduleString.strip() if moduleString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%Test_Suggestion:%s\n' % testSuggestionString.strip() if testSuggestionString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%Solution:%s\n' % solutionString.strip() if solutionString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%Test_Report:%s\n' % testReportString.strip() if testSuggestionString else ""
+        self.patchDeliveryData.commitMessage += '###%%%%%%VAL Can Test:%s\n' % valCanCheckString.strip() if valCanCheckString else ""
+
+        setReturnValue(0)
+
+    def cbComboBoxBugCategoryChanged(self, comboBoxBugCategory, obj1, obj2):
+        if comboBoxBugCategory.get_active_text() == 'TCT':
+            for one in self.patchDeliveryData.generatedByList:
+                obj2.remove_text(0)
+            for one in self.patchDeliveryData.generatedByList:
+                obj2.append_text(one)
+            obj1.set_sensitive(True)
+            obj2.set_sensitive(True)            
+        else:
+            for one in self.patchDeliveryData.generatedByList:
+                obj2.remove_text(0)
+            obj1.set_sensitive(False)
+            obj2.set_sensitive(False)
+
+    def chooseJob(self, widget):
+        self.job = widget.get_label()
+        if self.job == 'Task Job':
+            self.labelBumNumber.set_markup('<b>Task Number </b>')
+            self.hbox3.set_sensitive(False)
+            self.labelRootCause.set_sensitive(False)
+            self.comboBoxRootCause.set_sensitive(False)
+        else:
+            self.labelBumNumber.set_markup('<b>Defect Number </b>')
+            self.hbox3.set_sensitive(True)
+            self.labelRootCause.set_sensitive(True)
+            self.comboBoxRootCause.set_sensitive(True)
+
+    def cbCancelButton(self, button):
+        gtk.main_quit()
+
+    def cbOkButton(self, button):
+        self.checkAndGenCommitMsg()
+        if getReturnValue() == 0:
+            gtk.main_quit()
+
+    def doAboutMenu(self, action):
+        about = gtk.AboutDialog()
+        about.set_program_name("Patch Delivery")
+        about.set_copyright("TCL Communication Technology")
+        #about.set_version("0.1")
+        #about.set_comments("Battery is a simple tool for battery checking")
+        #about.set_website("http://www.zetcode.com")
+        #about.set_logo(gtk.gdk.pixbuf_new_from_file("battery.png"))
+        about.run()
+        about.destroy()
+
+    def doResetMenu(self, action):
+        self.entryProduct.set_text('')
+        self.entryBug.set_text('')
+        self.comboBoxRootCause.set_active(-1)
+        self.entryModule.set_text('')
+        self.entrySolution.set_text('')
+        bufferSuggestion = self.textViewTestSuggestion.get_buffer()
+        bufferSuggestion.delete(bufferSuggestion.get_start_iter(), bufferSuggestion.get_end_iter())
+        bufferReport = self.textViewTestReport.get_buffer()
+        bufferReport.delete(bufferReport.get_start_iter(), bufferReport.get_end_iter())
+        self.comboBoxValCanCheck.set_active(-1)
+        bufferComment = self.textViewComment.get_buffer()
+        bufferComment.delete(bufferComment.get_start_iter(), bufferComment.get_end_iter())
+
+    def doLoadLastMenu(self, action):
+        try:
+            fp = file(self.patchDeliveryData.lastCommitLogFile, 'r')
+            lastCommitMsg = fp.read()
+            fp.close()
+        except:
+            lastCommitMsg = ''
+            print 'WARNING: failed to load %s' % self.patchDeliveryData.lastCommitLogFile
+
+        tmpBugCatagory = ''
+        tmpGeneratedBy = ''
+
+        if lastCommitMsg.find('###%%%%%%'):
+            for one in lastCommitMsg.split('###%%%'):
+                if one[:8] == 'comment:':
+                    bufferComment = self.textViewComment.get_buffer()
+                    bufferComment.delete(bufferComment.get_start_iter(), bufferComment.get_end_iter())
+                    iter = bufferComment.get_iter_at_offset(0)
+                    bufferComment.insert(iter, one[8:].strip())
+                elif one[:11] == 'bug number:':
+                    self.entryBug.set_text(one[11:].strip())
+                elif one[:13] == 'product name:':
+                    self.entryProduct.set_text(one[13:].strip())
+                elif one[:11] == 'root cause:':
+                    if one[11:].strip() in self.patchDeliveryData.rootCauseList:
+                        self.comboBoxRootCause.set_active(self.patchDeliveryData.rootCauseList.index(one[11:].strip()))
+                elif one[:14] == 'Module_Impact:':
+                    self.entryModule.set_text(one[14:].strip())
+                elif one[:16] == 'Test_Suggestion:':
+                    bufferSuggestion = self.textViewTestSuggestion.get_buffer()
+                    bufferSuggestion.delete(bufferSuggestion.get_start_iter(), bufferSuggestion.get_end_iter())
+                    iter = bufferSuggestion.get_iter_at_offset(0)
+                    bufferSuggestion.insert(iter, one[16:].strip())
+                elif one[:9] == 'Solution:':
+                    self.entrySolution.set_text(one[9:].strip())
+                elif one[:12] == 'Test_Report:':
+                    bufferReport = self.textViewTestReport.get_buffer()
+                    bufferReport.delete(bufferReport.get_start_iter(), bufferReport.get_end_iter())
+                    iter = bufferReport.get_iter_at_offset(0)
+                    bufferReport.insert(iter, one[12:].strip())
+                elif one[:13] == 'Bug category:':
+                    if one[13:].strip() in self.patchDeliveryData.bugCategoryList:
+                        tmpBugCatagory = one[13:].strip()
+                        self.comboBoxBugCategory.set_active(self.patchDeliveryData.bugCategoryList.index(tmpBugCatagory))
+                elif one[:13] == 'Generated by:':
+                    if one[13:].strip() in self.patchDeliveryData.generatedByList:
+                        tmpGeneratedBy = one[13:].strip()
+                elif one[:13] == 'VAL Can Test:':
+                    if one[13:].strip() == 'Yes':
+                        self.comboBoxValCanCheck.set_active(0)
+                    elif one[13:].strip() == 'No':
+                        self.comboBoxValCanCheck.set_active(1)
+            if tmpBugCatagory == 'TCT' and tmpGeneratedBy:
+                self.comboBoxGeneratedBy.set_active(self.patchDeliveryData.generatedByList.index(tmpGeneratedBy))
+
+    def doOKMenu(self, action):
+        self.checkAndGenCommitMsg()
+        if getReturnValue() == 0:
+            gtk.main_quit()
+
+    def doCancelMenu(self, action):
+        gtk.main_quit()
+
+def main():
+    patchDeliveryData = PatchDeliveryData()
+
+    isHookMode = False
+    isAddAllFile = False
+    gitAddFileList = []
+    tmpGeneratedBy = ''
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '-H':
+            isHookMode = True
+            gitMsgFile = sys.argv[2]
+        elif sys.argv[1] == '-f':
+            gitAddFileList = sys.argv[2:]
+        elif sys.argv[1] == '-a':
+            isAddAllFile = True
+
+    if isHookMode:
+        fp = file(gitMsgFile, 'r')
+        cmdCommitMessage = fp.read()
+        fp.close()
+    else:
+        cmdCommitMessage = ''
+
+    if cmdCommitMessage.find('###%%%%%%'):
+        for one in cmdCommitMessage.split('###%%%'):
+            if one[:8] == 'comment:':
+                patchDeliveryData.comment += one[8:].strip()
+            elif one[:11] == 'bug number:':
+                patchDeliveryData.bugNumber += one[11:].strip()
+            elif one[:13] == 'product name:':
+                patchDeliveryData.productName += one[13:].strip()
+            elif one[:11] == 'root cause:':
+                patchDeliveryData.rootCause = one[11:].strip()
+            elif one[:14] == 'Module_Impact:':
+                patchDeliveryData.moduleImpact += one[14:].strip()
+            elif one[:16] == 'Test_Suggestion:':
+                patchDeliveryData.testSuggestion += one[16:].strip()
+            elif one[:9] == 'Solution:':
+                patchDeliveryData.solution += one[9:].strip()
+            elif one[:12] == 'Test_Report:':
+                patchDeliveryData.testReport += one[12:].strip()
+            elif one[:13] == 'VAL Can Test:':
+                patchDeliveryData.valCanTest = one[13:].strip()
+            elif one[:13] == 'Bug category:':
+                patchDeliveryData.bugCategory = one[13:].strip()
+            elif one[:13] == 'Generated by:':
+                tmpGeneratedBy = one[13:].strip()
+            else:
+                patchDeliveryData.comment += one.strip()
+
+        if patchDeliveryData.bugCategory == 'JRD bug' and tmpGeneratedBy:
+            patchDeliveryData.generatedBy = tmpGeneratedBy
+
+    if isHookMode and patchDeliveryData.comment and patchDeliveryData.bugNumber and patchDeliveryData.productName and patchDeliveryData.rootCause and patchDeliveryData.moduleImpact and patchDeliveryData.testSuggestion and patchDeliveryData.solution and patchDeliveryData.testReport and patchDeliveryData.valCanTest and patchDeliveryData.bugCategory:
+        if (patchDeliveryData.bugCategory == 'JRD bug' and patchDeliveryData.generatedBy) or patchDeliveryData.bugCategory != 'JRD bug':
+            setReturnValue(0)
+            return
+
+    global globalConfigFileList
+    proxy = urllib2.ProxyHandler({})
+    opener = urllib2.build_opener(proxy)
+    urllib2.install_opener(opener) 
+    globalConfigFileList = urllib2.urlopen('http://172.26.32.15/gitweb-tools-CD/?p=patch/scm_tools_cd.git;a=blob_plain;f=conf/config').readlines()
+
+    for line in globalConfigFileList:
+        line = line.strip()
+        line = re.sub('#.*', '', line)
+        line = line.strip()
+        match = re.match('^\s*([^\s]+)\s+([^\s]+)', line)
+        if match:
+            patchDeliveryData.projList.append(match.group(1))
+
+    JrdPatchDeliveryClientGui(patchDeliveryData=patchDeliveryData)
+    gtk.main()
+
+    if getReturnValue() == 0:
+        if isHookMode:
+            fp = file(gitMsgFile, 'w')
+            fp.write(patchDeliveryData.commitMessage)
+            fp.close()
+        else:
+            if gitAddFileList:
+                fileAddString = ' '.join(map(lambda x: '"%s"' % x, gitAddFileList))
+                os.system('git add %s' % fileAddString)
+            tmpCommitInfoFd, tmpCommitInfoFileName = tempfile.mkstemp('Pdg', text=True)
+            os.write(tmpCommitInfoFd, patchDeliveryData.commitMessage)
+            os.close(tmpCommitInfoFd)
+            if isAddAllFile:
+                os.system('git commit -a -F %s' % tmpCommitInfoFileName)
+            else:
+                os.system('git commit -F %s' % tmpCommitInfoFileName)
+            os.remove(tmpCommitInfoFileName)
+
+        try:
+            fp = file(patchDeliveryData.lastCommitLogFile, 'w')
+            fp.write(patchDeliveryData.commitMessage)
+            fp.close()
+        except:
+            print 'WARNING: write commit message to %s failed. This may caused by incorrect permission or file corruption.' % patchDeliveryData.lastCommitLogFile
+
+
+def target(project):
+    for line in globalConfigFileList:
+        m = re.match('^\s*([^\s]+)\s+([^\s]+)\s+([^\s]+)', line)
+        if m:
+            if m.group(1) == project:
+                return m.group(3)
+    return None
+
+def utc_required(response):
+    p = r'<.*?:ItemField Name="UTC Required\?"><.*:boolean><.*:value>(false|true)</.*:value></.*:boolean>'
+    m = re.search(p, response)
+    if m:
+        if m.group(1) == 'true':
+            return True
+    return False
+
+def utc_in_response(response):
+    p = r'<.*:RelatedItem FieldName="Related UTC">(<.*:Item>\d+</.*:Item>)+</.*:RelatedItem>'
+    return re.search(p, response)
+
+def defect_task_in_response(response):
+    if ">Defect<" in response:
+        return "Defect"
+    elif ">Task<" in response:
+        return "Task"
+    else:
+        return ''
+
+def raw_alm_process(id, url, username, password):
+    msg = \
+'''<soapenv:Envelope
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:int="http://webservice.mks.com/10/2/Integrity"
+    xmlns:sch="http://webservice.mks.com/10/2/Integrity/schema">
+    <soapenv:Header/>
+    <soapenv:Body>
+    <int:getItem>
+     <arg0 sch:ItemId="%s">
+        <sch:Username>%s</sch:Username>
+        <sch:Password>%s</sch:Password>
+        <sch:InputField>Type</sch:InputField>
+        <sch:InputField>Related UTC</sch:InputField>
+        <sch:InputField>UTC Required?</sch:InputField>
+     </arg0>
+    </int:getItem>
+    </soapenv:Body>
+</soapenv:Envelope>'''
+
+    raw_data = msg%(str(id), username, password)
+    headers = {'SOAPAction': u'""',
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'Connection': 'close',
+        'Content-Length': str(len(raw_data))}
+    req = urllib2.Request(url, raw_data, headers)
+    try:
+        f = urllib2.urlopen(req, timeout=5)
+        response = f.read()
+    except urllib2.HTTPError, e:
+        s = e.read()
+        m = re.search("<detail><.+>(.+)<.+MKSException></detail>", s)
+        if m:
+            alm_error_msg = m.group(1)
+        else:
+            alm_error_msg = s
+        return (alm_error_msg, 404)
+    except urllib2.URLError, e:
+        alm_error_msg = str(e.reason)
+        return (alm_error_msg, 500)
+    typ = defect_task_in_response(response)
+    if typ:
+        if utc_required(response):
+            if utc_in_response(response):
+                return (typ, 200)
+            else:
+                return ('This id doesn\'t have any related utc', 206)
+        else:
+            return (typ, 200)
+    else:
+        return ('This is neither a Defect nor a Task!', 404)
+
+
+def legal_ID(project, item_id, expected_type):
+    t =target(project)
+
+    if not t:
+        alm_error_msg = 'NO Platform Supported'
+        return (alm_error_msg, 505)
+
+    if t.upper() == 'ALM':
+        url = "http://alm.tclcom.com:7001/webservices/10/2/Integrity/"
+        username = "scm_query"
+        password = "SCM_QUERY123!"
+        errno = raw_alm_process(item_id, url, username, password)
+        if errno[1] != 200:
+            return errno
+        else:
+            typ = errno[0]
+            err = errno[1]
+            if typ not in expected_type:
+                return ("You chose the wrong item type, This is a %s"%typ, 207)
+            else:
+                return errno
+
+    return ("OK", 200)
+
+
+
+if __name__ == '__main__':
+    main()
+    if getReturnValue() != 0:
+        print "Commit aborted"
+    sys.exit(getReturnValue())

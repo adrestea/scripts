@@ -14,15 +14,16 @@ def main():
     #authorizer.add_anonymous('/home/user/tmp/rom')
     #authorizer.add_user('user', '12345', '/', perm='elradfmw')
     #authorizer.add_anonymous('/')
-    authorizer.add_user('user', '12345', '/home/user/tmp/rom', perm='elradfmw')
-    authorizer.add_anonymous('/home/user/tmp/rom')
+    authorizer.add_user('user', '12345', '/home/archermind/', perm='elradfmw')
+    #authorizer.add_anonymous('/home/user/tmp/rom')
+    authorizer.add_anonymous('/home/archermind/tmp/shared')
     
     # Instantiate FTP handler class
     handler = FTPHandler
     handler.authorizer = authorizer
     
     # Define a customized banner (string returned when client connects)
-    #handler.banner = "pyftpdlib based ftpd ready."
+    handler.banner = "ftp filesystem ready."
     # Specify a masquerade address and the range of ports to use for
     # passive connections.  Decomment in case you're behind a NAT.
     #handler.masquerade_address = '151.25.42.11'

@@ -7,12 +7,10 @@ import sys
 import getopt
 import os
 import commands
-import re
-import config
+from statistic.utils import config
 import path
 import fileUtils
 import timUtils
-import config
 
 CONFIG_FILE={
     "Settings":"/system/priv-a/Settings/Settings.apk",

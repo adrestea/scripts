@@ -87,7 +87,7 @@ class WatchDog(object):
         while True:
             # m_time = self.file_attributes.get_mtime()
             # m_time_started = datetime.datetime.strptime(m_time, '%a %b  %d %H:%M:%S %Y')
-            m_time_started = self.file_attributes.get_mtime()
+            m_time_started = self.file_attributes.get_mtime_stamp()
             if self.__m_time_lasted is None:
                 self.__m_time_lasted = m_time_started
                 self.__write_flag()

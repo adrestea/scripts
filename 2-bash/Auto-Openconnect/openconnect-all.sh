@@ -2,6 +2,15 @@
 
 line=`cat -n openconnect-all.sh |egrep "#\!/bin/expect$" |awk '{print $1}'`
 eval tail -n +$line $0 > .exp
+
+dpkg -l |egrep "ii  openconnect" >> /dev/null 2>&1
+if [ ! 0 -eq $? ]; then
+    echo "---------------------------------"
+    echo "|        install openconnect.   |"
+    echo "---------------------------------"
+    sudo apt-get install openconnect
+fi
+
 path_openconnect=`which openconnect`
 if [ ! -u $path_openconnect ]; then
     echo "---------------------------------"

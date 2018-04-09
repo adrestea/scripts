@@ -1,0 +1,31 @@
+wget --no-check-certificate https://raw.githubusercontent.com/teddysun/shadowsocks_install/master/shadowsocks-libev.sh
+chmod +x shadowsocks-libev.sh 
+./shadowsocks-libev.sh 2>&1 | tee shadowsocks-libev.log
+cd /tmp/
+wget —no–check–certificate https://github.com/91yun/uml/raw/master/lkl/install.sh && bash install.sh
+ls
+chmod +x install.sh 
+ls
+./install.sh 
+ping 10.0.0.2
+./install.sh 
+ping 10.0.0.2
+exit
+nohup exit
+exit
+top
+exit
+cat /etc/shadowsocks-libev/config.json 
+vim /etc/shadowsocks-libev/config.json
+
+[root@a ~]# cat /etc/shadowsocks-libev/config.json
+{
+    "server":["[::0]","0.0.0.0"],
+    "server_port":9998,
+    "local_address":"127.0.0.1",
+    "local_port":1080,
+    "password":"LpaH4dEHf5",
+    "timeout":600,
+    "method":"aes-256-cfb"
+}
+
